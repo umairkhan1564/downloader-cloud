@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: downloader-cloud
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
