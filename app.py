@@ -234,7 +234,9 @@ def _run(job, quality, cookies, threads, cfile=None):
             # (common for Instagram/Facebook reels). Strip it and use yt-dlp.
             if url.startswith("ytdl:"):
                 url, eng = url[5:], "video"
-            if eng == "http":
+            if eng == "cobalt":
+                dl.download_cobalt(url, itemdir, progress_hook=hook, proxy=px)
+            elif eng == "http":
                 dl.download_http(url, itemdir, progress_hook=hook,
                                  referer=it.get("referer"), cookies_browser=cookies,
                                  cookies_file=cfile, proxy=px)

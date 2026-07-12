@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import glob
+import json
 import shutil
 import webbrowser
 from urllib.parse import urlparse, quote, unquote
@@ -423,6 +424,74 @@ def _media_kind(item):
     return None
 
 
+# --------------------------------------------------------------------------- #
+# cobalt resolver — a self-hosted cobalt instance turns ANY single video/reel
+# link (Instagram / YouTube / Facebook / TikTok / etc.) into a direct media
+# URL. It uses guest/embed endpoints, so it works from a datacenter IP with NO
+# cookies — the thing yt-dlp/gallery-dl get blocked on. Set COBALT_URL to point
+# at your own instance (falls back to the deployed one).
+# --------------------------------------------------------------------------- #
+COBALT_API = (os.environ.get("COBALT_URL")
+              or "https://cobalt-api-cahs.onrender.com").strip().rstrip("/")
+
+
+def _cobalt_post(page_url, proxy=None):
+    """POST a link to the cobalt instance; return parsed JSON dict or None."""
+    if not COBALT_API:
+        return None
+    import urllib.request
+    body = json.dumps({"url": page_url, "filenameStyle": "basic"}).encode("utf-8")
+    req = urllib.request.Request(
+        COBALT_API + "/", data=body, method="POST",
+        headers={"Accept": "application/json", "Content-Type": "application/json",
+                 "User-Agent": _UA})
+    handlers = []
+    if proxy:
+        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    opener = urllib.request.build_opener(*handlers)
+    try:
+        with opener.open(req, timeout=90) as r:
+            return json.loads(r.read().decode("utf-8", "ignore"))
+    except Exception:
+        return None
+
+
+def cobalt_items(page_url, proxy=None):
+    """Resolve a link via cobalt into FETCH-step item(s), or [] if it can't.
+    Single media -> one 'cobalt' item (re-resolved fresh at download time so the
+    signed URL can't expire). Carousel/picker -> direct 'http' items."""
+    data = _cobalt_post(page_url, proxy=proxy)
+    if not data:
+        return []
+    st = data.get("status")
+    if st in ("redirect", "tunnel", "stream"):
+        return [{"url": page_url, "title": data.get("filename") or page_url,
+                 "engine": "cobalt"}]
+    if st == "picker":
+        out = []
+        for i, p in enumerate(data.get("picker") or []):
+            u = p.get("url")
+            if u:
+                out.append({"url": u, "engine": "http",
+                            "title": p.get("filename") or f"{page_url}#{i + 1}"})
+        return out
+    return []
+
+
+def download_cobalt(page_url, outdir, progress_hook=None, proxy=None):
+    """Resolve a single link via cobalt at download time (fresh URL) + fetch it."""
+    data = _cobalt_post(page_url, proxy=proxy)
+    st = (data or {}).get("status")
+    if st in ("redirect", "tunnel", "stream"):
+        return download_http(data["url"], outdir, progress_hook=progress_hook,
+                             filename=data.get("filename"), proxy=proxy)
+    if st == "picker":
+        picks = [p.get("url") for p in (data.get("picker") or []) if p.get("url")]
+        if picks:
+            return download_http(picks[0], outdir, progress_hook=progress_hook, proxy=proxy)
+    raise RuntimeError("cobalt could not resolve this link (%s)." % (st or "no response"))
+
+
 def scrape(content_type, query, cookies_browser=None, limit=0, cookies_file=None,
            errors_out=None, proxy=None):
     """
@@ -438,6 +507,12 @@ def scrape(content_type, query, cookies_browser=None, limit=0, cookies_file=None
     # If the user pasted a full URL, use it verbatim (don't wrap it again).
     if q.lower().startswith(("http://", "https://")):
         url = q
+        # cobalt first: fixes Instagram/YouTube/Facebook single links on cloud
+        # (datacenter IP + no cookies). Falls through to yt-dlp/gallery-dl if it
+        # can't handle the link (e.g. a whole channel/profile to enumerate).
+        cob = cobalt_items(url, proxy=proxy)
+        if cob:
+            return cob
     else:
         url = ct["url"](q.lstrip("@"))
 
@@ -742,7 +817,7 @@ def _guess_name(url, default_ext=".jpg"):
 
 
 def download_http(url, outdir, progress_hook=None, referer=None,
-                  cookies_browser=None, cookies_file=None, proxy=None):
+                  cookies_browser=None, cookies_file=None, proxy=None, filename=None):
     """Stream a direct media URL to disk with byte progress. Returns filepath."""
     import urllib.request
     import http.cookiejar
@@ -775,7 +850,8 @@ def download_http(url, outdir, progress_hook=None, referer=None,
     opener = urllib.request.build_opener(*handlers)
 
     req = urllib.request.Request(url, headers=headers)
-    dest = os.path.join(outdir, _guess_name(url))
+    safe_name = re.sub(r'[<>:"/\\|?*]', "_", os.path.basename(filename)) if filename else None
+    dest = os.path.join(outdir, safe_name or _guess_name(url))
     # avoid clobbering same-named files
     base, ext = os.path.splitext(dest)
     n = 1
