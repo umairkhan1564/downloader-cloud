@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bulk Downloader — Web</title>
+<style>
+  :root{
+    --bg:#0b0f1a; --card:#121a2b; --card2:#0e1524; --line:#22304a;
+    --fg:#e8eefc; --mut:#8ba0c4; --blue:#3b82f6; --blue2:#60a5fa;
+    --green:#22c55e; --red:#ef4444; --dark:#07101f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Segoe UI,system-ui,Arial,sans-serif;background:var(--bg);color:var(--fg)}
+  header{background:linear-gradient(90deg,#1e3a8a,#3b0764);padding:18px 26px;
+    display:flex;align-items:center;justify-content:space-between}
+  header h1{margin:0;font-size:22px;letter-spacing:.3px}
+  header .sub{color:#cdd8f0;font-size:13px;margin-top:2px}
+  header .badge{text-align:right}
+  header .badge b{font-size:15px}
+  .wrap{display:flex;gap:16px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .left{flex:1 1 340px;max-width:420px}
+  .right{flex:2 1 520px;min-width:340px}
+  h2{font-size:12px;letter-spacing:1px;color:var(--blue2);margin:2px 0 12px;text-transform:uppercase}
+  label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--card2);color:var(--fg);
+    border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:70px}
+  .row2{display:flex;gap:10px}
+  .row2>div{flex:1}
+  button{cursor:pointer;border:0;border-radius:9px;font-weight:600;font-size:14px;padding:11px 14px}
+  .primary{background:var(--blue);color:#fff;width:100%;margin-top:14px}
+  .primary:hover{background:var(--blue2)}
+  .ghost{background:var(--card2);color:var(--fg);border:1px solid var(--line)}
+  .bar{display:flex;gap:8px;align-items:center;margin:12px 0}
+  .bar button{flex:1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--mut);font-weight:600;font-size:11px;letter-spacing:.5px}
+  td.t{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pill{font-size:11px;padding:2px 8px;border-radius:20px;background:#1e293b;color:var(--mut)}
+  .pill.done{background:#0f2f1c;color:#4ade80}
+  .pill.error{background:#3a1618;color:#f87171}
+  .pill.downloading{background:#12253f;color:var(--blue2)}
+  a.dl{color:var(--blue2);text-decoration:none;font-weight:600}
+  .empty{color:var(--mut);text-align:center;padding:30px 10px}
+  .log{margin-top:12px;background:#060b16;border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font-family:Consolas,monospace;font-size:11px;color:#9fb3d6;
+    max-height:130px;overflow:auto;white-space:pre-wrap}
+  .hidden{display:none}
+  .note{font-size:11px;color:var(--mut);margin-top:6px;line-height:1.4}
+  .spin{color:var(--blue2);font-size:12px;margin-left:8px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>⬇ Bulk Downloader</h1>
+    <div class="sub">YouTube · TikTok · Instagram · Pinterest — bulk video &amp; image grabber</div>
+  </div>
+  <div class="badge"><b>Web</b><br><span class="sub">by Umair</span></div>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: config -->
+  <div class="panel left">
+    <h2>1 · Source</h2>
+    <label>Content type</label>
+    <select id="ct">
+      {% for c in content_types %}<option {{ 'selected' if c==default_ct }}>{{ c }}</option>{% endfor %}
+    </select>
+    <label>Username / URL / search — (ek per line, multiple allowed)</label>
+    <textarea id="query" placeholder="e.g.  mrbeast&#10;https://youtube.com/@somechannel/videos&#10;https://www.tiktok.com/@user"></textarea>
+
+    <h2 style="margin-top:16px">2 · Options</h2>
+    <div class="row2">
+      <div>
+        <label>Quality</label>
+        <select id="quality">
+          {% for q in qualities %}<option {{ 'selected' if q==default_q }}>{{ q }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Login (cookies)</label>
+        <select id="cookies">
+          {% for b in browsers %}<option>{{ b }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>Limit (0 = all, slow)</label>
+        <input type="number" id="limit" value="50" min="0">
+      </div>
+      <div>
+        <label>Parallel</label>
+        <input type="number" id="threads" value="3" min="1" max="6">
+      </div>
+    </div>
+    {% if proxy_count %}
+    <div class="note" style="background:#0e2038;border:1px solid #1e3a5f;border-radius:8px;padding:8px 10px;color:#8ab8f0;margin-top:10px">
+      🔀 {{ proxy_count }} proxy rotating — har request alag IP se, FB/IG throttle nahi karega.
+    </div>
+    {% else %}
+    <div class="note" style="margin-top:10px">
+      💡 Throttle se bachne ke liye <b>proxies.txt</b> me proxies daalo (ek per line) — phir har request alag IP se chalegi.
+    </div>
+    {% endif %}
+    {% if server_login %}
+    <div class="note" style="background:#0f2f1c;border:1px solid #1c5636;border-radius:8px;padding:8px 10px;color:#7ee2a8;margin-top:10px">
+      ✅ Server login active ({{ server_login }}) — Instagram downloads work, no cookies needed from you.
+    </div>
+    <input id="cookies_file" type="hidden" value="">
+    {% else %}
+    <label>Cookies file — cookies.txt (Insta/FB ke liye; server_cookies/ me daalo to sabke liye auto)</label>
+    <input id="cookies_file" placeholder="e.g. D:\cookies.txt  (browser extension se export)">
+    {% endif %}
+
+    <input id="out_folder" type="hidden" value="">
+
+
+    <button class="primary" id="fetchBtn" onclick="doFetch()">🔎 Fetch list</button>
+    <div class="note">Works best with public YouTube, TikTok, Instagram and Pinterest content. Paste a link (or username + type) and hit Fetch.</div>
+    <div id="fmsg" class="note"></div>
+  </div>
+
+  <!-- RIGHT: results -->
+  <div class="panel right">
+    <h2>3 · Items <span id="cnt" class="pill"></span><span id="spin" class="spin hidden">working…</span></h2>
+    <div class="bar hidden" id="actions">
+      <button class="ghost" onclick="selAll(true)">Select all</button>
+      <button class="ghost" onclick="selAll(false)">Clear</button>
+      <button class="primary" style="margin:0" onclick="doDownload()">⬇ Download selected</button>
+    </div>
+    <div id="results"><div class="empty">Abhi koi item nahi — Source bhar ke <b>Fetch list</b> dabao.</div></div>
+    <div id="log" class="log hidden"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let ITEMS = [];        // fetched items
+let curJob = null;
+let poll = null;
+
+async function doFetch(){
+  const query = $("query").value.trim();
+  if(!query){ alert("URL ya username daalein."); return; }
+  $("fetchBtn").disabled = true; $("spin").classList.remove("hidden"); $("fmsg").textContent = "";
+  let r;
+  try{
+    r = await (await fetch("/fetch",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({content_type:$("ct").value, query, cookies:$("cookies").value,
+        cookies_file:$("cookies_file").value, limit:parseInt($("limit").value)||0})})).json();
+  }catch(e){ r = {error:"Network/parse error: "+e}; }
+  $("fetchBtn").disabled = false; $("spin").classList.add("hidden");
+  if(r.error){ $("fmsg").textContent = "⚠ "+r.error; renderEmpty(); return; }
+  ITEMS = r.items;
+  if(r.errors && r.errors.length) $("fmsg").textContent = "Note: "+r.errors.slice(0,2).join(" | ");
+  renderItems();
+}
+
+function renderEmpty(){
+  $("results").innerHTML = '<div class="empty">Kuch nahi mila.</div>';
+  $("actions").classList.add("hidden"); $("cnt").textContent = "";
+}
+
+function renderItems(){
+  $("cnt").textContent = ITEMS.length + " items";
+  $("actions").classList.remove("hidden");
+  let rows = ITEMS.map((it,i)=>`
+    <tr>
+      <td><input type="checkbox" class="chk" data-i="${i}" checked></td>
+      <td class="t" title="${(it.title||'').replace(/"/g,'&quot;')}">${it.title||it.url}</td>
+      <td><span class="pill">${it.engine}</span></td>
+      <td id="st${i}"><span class="pill">—</span></td>
+      <td id="ac${i}"></td>
+    </tr>`).join("");
+  $("results").innerHTML = `<table>
+    <tr><th></th><th>Title</th><th>Type</th><th>Status</th><th>File</th></tr>${rows}</table>`;
+}
+
+function selAll(v){ document.querySelectorAll(".chk").forEach(c=>c.checked=v); }
+
+async function doDownload(){
+  const chosen = [...document.querySelectorAll(".chk")].filter(c=>c.checked)
+                   .map(c=>ITEMS[+c.dataset.i]);
+  if(!chosen.length){ alert("Koi item select nahi kiya."); return; }
+  const r = await (await fetch("/download",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({items:chosen, quality:$("quality").value, cookies:$("cookies").value,
+      cookies_file:$("cookies_file").value, out_folder:$("out_folder").value,
+      threads:parseInt($("threads").value)||3})})).json();
+  if(r.error){ alert(r.error); return; }
+  curJob = r.job;
+  $("log").classList.remove("hidden");
+  // map chosen back to their row index for status updates
+  window._map = chosen.map(c=>ITEMS.indexOf(c));
+  if(poll) clearInterval(poll);
+  poll = setInterval(pollStatus, 900);
+  pollStatus();
+}
+
+async function pollStatus(){
+  if(!curJob) return;
+  let s;
+  try{ s = await (await fetch("/status/"+curJob)).json(); }catch(e){ return; }
+  (s.items||[]).forEach(it=>{
+    const rowI = window._map[it.index];
+    const st = $("st"+rowI), ac = $("ac"+rowI);
+    if(!st) return;
+    const cls = it.status||"queued";
+    const label = it.status==="downloading" ? (it.pct||"…")
+                : it.status==="done" ? "done"
+                : it.status==="error" ? "error" : (it.status||"queued");
+    st.innerHTML = `<span class="pill ${cls}">${label}</span>`;
+    if(it.file && ac) ac.innerHTML =
+      `<a class="dl" href="/file/${curJob}/${encodeURIComponent(it.file)}">⬇ save</a>`;
+    else if(it.error && ac) ac.innerHTML = `<span class="pill error" title="${it.error.replace(/"/g,'&quot;')}">!</span>`;
+  });
+  if(s.log) $("log").textContent = s.log.join("\n");
+  $("log").scrollTop = $("log").scrollHeight;
+  if(s.status==="done"){ clearInterval(poll); poll=null; $("spin").classList.add("hidden"); }
+  else $("spin").classList.remove("hidden");
+}
+</script>
+</body>
+</html>

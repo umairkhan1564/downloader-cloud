@@ -1,0 +1,5 @@
+outputs/
+server_cookies/
+__pycache__/
+*.pyc
+proxies.txt
