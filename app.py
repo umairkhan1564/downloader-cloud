@@ -66,20 +66,40 @@ def _server_cookie_file():
 
 
 # --- Rotating proxies (defeat FB/IG throttling) --------------------------- #
-# Put one proxy per line in proxies.txt, e.g.  http://user:pass@host:port
+# One proxy per line in proxies.txt. Read from (in order) a PROXIES_FILE env
+# path, Render's Secret Files (/etc/secrets/proxies.txt), then the local repo.
 # Each request/download picks a random one so the IP keeps changing.
-PROXIES_FILE = os.path.join(BASE, "proxies.txt")
+# Accepts common formats and normalises them to http://user:pass@host:port:
+#   http://user:pass@host:port | user:pass@host:port | host:port:user:pass | host:port
+def _proxies_path():
+    for p in [(os.environ.get("PROXIES_FILE") or "").strip(),
+              "/etc/secrets/proxies.txt", os.path.join(BASE, "proxies.txt")]:
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def _normalise_proxy(s):
+    if "://" in s:
+        return s
+    parts = s.split(":")
+    # Webshare "Download list" default = host:port:user:pass
+    if len(parts) == 4:
+        host, port, user, pwd = parts
+        return f"http://{user}:{pwd}@{host}:{port}"
+    return "http://" + s   # host:port  or  user:pass@host:port
 
 
 def _load_proxies():
-    if not os.path.isfile(PROXIES_FILE):
+    path = _proxies_path()
+    if not path:
         return []
     out = []
-    with open(PROXIES_FILE, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             s = line.strip()
             if s and not s.startswith("#"):
-                out.append(s)
+                out.append(_normalise_proxy(s))
     return out
 
 
