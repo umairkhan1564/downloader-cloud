@@ -26,6 +26,7 @@ import re
 import sys
 import glob
 import json
+import time
 import shutil
 import webbrowser
 from urllib.parse import urlparse, quote, unquote
@@ -435,25 +436,31 @@ COBALT_API = (os.environ.get("COBALT_URL")
               or "https://cobalt-api-cahs.onrender.com").strip().rstrip("/")
 
 
-def _cobalt_post(page_url, proxy=None):
-    """POST a link to the cobalt instance; return parsed JSON dict or None."""
+def _cobalt_post(page_url, proxy=None, tries=3):
+    """POST a link to the cobalt instance; return parsed JSON dict or None.
+    Retries a few times: on Render's free plan the instance sleeps after 15 min,
+    so the first call may 502/timeout while it wakes (~30-50s). Retrying makes the
+    very first user request succeed instead of silently failing."""
     if not COBALT_API:
         return None
     import urllib.request
     body = json.dumps({"url": page_url, "filenameStyle": "basic"}).encode("utf-8")
-    req = urllib.request.Request(
-        COBALT_API + "/", data=body, method="POST",
-        headers={"Accept": "application/json", "Content-Type": "application/json",
-                 "User-Agent": _UA})
     handlers = []
     if proxy:
         handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
     opener = urllib.request.build_opener(*handlers)
-    try:
-        with opener.open(req, timeout=90) as r:
-            return json.loads(r.read().decode("utf-8", "ignore"))
-    except Exception:
-        return None
+    for attempt in range(tries):
+        req = urllib.request.Request(
+            COBALT_API + "/", data=body, method="POST",
+            headers={"Accept": "application/json", "Content-Type": "application/json",
+                     "User-Agent": _UA})
+        try:
+            with opener.open(req, timeout=60) as r:
+                return json.loads(r.read().decode("utf-8", "ignore"))
+        except Exception:
+            if attempt < tries - 1:
+                time.sleep(5)   # let a sleeping instance boot, then retry
+    return None
 
 
 def cobalt_items(page_url, proxy=None):
@@ -513,6 +520,14 @@ def scrape(content_type, query, cookies_browser=None, limit=0, cookies_file=None
         cob = cobalt_items(url, proxy=proxy)
         if cob:
             return cob
+        # For hosts that ONLY work via cobalt on the cloud (Instagram/Facebook —
+        # gallery-dl can't enumerate them without cookies), don't fall through to
+        # the broken path and show a misleading "kuch nahi mila". Tell the user to
+        # retry (usually a cold-start; the retry lands on a woken instance).
+        host = urlparse(url).netloc.lower()
+        if any(h in host for h in ("instagram.com", "facebook.com", "fb.watch", "fb.com")):
+            raise RuntimeError("Server abhi jaag raha hai ya link private/unsupported hai - "
+                               "20-30 sec ruk kar dobara 'Fetch' dabayein.")
     else:
         url = ct["url"](q.lstrip("@"))
 
