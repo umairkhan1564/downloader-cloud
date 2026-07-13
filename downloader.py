@@ -550,6 +550,13 @@ def scrape(content_type, query, cookies_browser=None, limit=0, cookies_file=None
             filtered = [it for it in items if _media_kind(it) == want]
             if filtered:            # only apply if it didn't wipe everything
                 items = filtered
+        # Instagram/Facebook by USERNAME can't be enumerated on the cloud (needs
+        # login cookies + a residential IP). Guide the user to paste a link.
+        if not items and any(h in url for h in ("instagram.com", "facebook.com")):
+            raise RuntimeError(
+                "Instagram/Facebook ka poora profile cloud pe nahi chalta (login chahiye). "
+                "Kisi ek reel/post/video ka POORA LINK paste karein, "
+                "e.g. https://www.instagram.com/reel/XXXXXXXXX/")
         return items
     return expand_source(url, cookies_browser=cookies_browser,
                          cookies_file=cookies_file, proxy=proxy)

@@ -70,8 +70,11 @@
     <select id="ct">
       {% for c in content_types %}<option {{ 'selected' if c==default_ct }}>{{ c }}</option>{% endfor %}
     </select>
-    <label>Username / URL / search — (ek per line, multiple allowed)</label>
-    <textarea id="query" placeholder="e.g.  mrbeast&#10;https://youtube.com/@somechannel/videos&#10;https://www.tiktok.com/@user"></textarea>
+    <label>Paste LINK(s) — ek per line (Instagram/Facebook ke liye reel/post ka poora LINK, username nahi)</label>
+    <textarea id="query" placeholder="e.g.  https://www.instagram.com/reel/XXXXXXXXX/&#10;https://www.youtube.com/watch?v=XXXXXXXX&#10;https://www.tiktok.com/@user/video/123..."></textarea>
+    <div class="muted" style="font-size:12px;margin-top:6px;color:#8a94a6">
+      💡 Instagram/YouTube/Facebook: kisi <b>reel/video ka poora link</b> paste karein. TikTok/Pinterest username se bhi chalte hain.
+    </div>
 
     <h2 style="margin-top:16px">2 · Options</h2>
     <div class="row2">
