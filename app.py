@@ -37,18 +37,32 @@ def _server_cookie_file():
     """Newest operator cookies file used for all users (server-side login).
     Looked up in, in order: an explicit COOKIES_FILE env path, Render's mounted
     Secret Files dir (/etc/secrets), and the local server_cookies/ folder.
-    Only picks files named cookies*.txt so the README isn't mistaken for one."""
+    Only picks files named cookies*.txt so the README isn't mistaken for one.
+
+    yt-dlp/gallery-dl rewrite the cookie jar after use, but /etc/secrets is
+    READ-ONLY on Render -> copy such a file to a writable location and hand that
+    back instead (fixes 'Read-only file system' download errors)."""
     import glob
+    import shutil
+    candidates = []
     env_path = (os.environ.get("COOKIES_FILE") or "").strip()
-    if env_path and os.path.isfile(env_path):
-        return env_path
-    dirs = ["/etc/secrets", SERVER_COOKIES_DIR]   # Render secret files, then local
-    files = []
-    for d in dirs:
-        files += glob.glob(os.path.join(d, "cookies*.txt"))
-    files = [f for f in files if os.path.isfile(f)]
-    files.sort(key=os.path.getmtime, reverse=True)
-    return files[0] if files else None
+    if env_path:
+        candidates.append(env_path)
+    for d in ("/etc/secrets", SERVER_COOKIES_DIR):   # Render secret files, then local
+        candidates += sorted(glob.glob(os.path.join(d, "cookies*.txt")),
+                             key=os.path.getmtime, reverse=True)
+    for p in candidates:
+        if not (p and os.path.isfile(p)):
+            continue
+        if p.startswith("/etc/secrets") or not os.access(p, os.W_OK):
+            dst = os.path.join(SERVER_COOKIES_DIR, "cookies_active.txt")
+            try:
+                shutil.copy(p, dst)
+                return dst
+            except Exception:
+                return p
+        return p
+    return None
 
 
 # --- Rotating proxies (defeat FB/IG throttling) --------------------------- #
