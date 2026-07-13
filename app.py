@@ -34,11 +34,20 @@ os.makedirs(SERVER_COOKIES_DIR, exist_ok=True)
 
 
 def _server_cookie_file():
-    """Newest operator cookies file in server_cookies/ (used for all users).
+    """Newest operator cookies file used for all users (server-side login).
+    Looked up in, in order: an explicit COOKIES_FILE env path, Render's mounted
+    Secret Files dir (/etc/secrets), and the local server_cookies/ folder.
     Only picks files named cookies*.txt so the README isn't mistaken for one."""
     import glob
-    files = sorted(glob.glob(os.path.join(SERVER_COOKIES_DIR, "cookies*.txt")),
-                   key=os.path.getmtime, reverse=True)
+    env_path = (os.environ.get("COOKIES_FILE") or "").strip()
+    if env_path and os.path.isfile(env_path):
+        return env_path
+    dirs = ["/etc/secrets", SERVER_COOKIES_DIR]   # Render secret files, then local
+    files = []
+    for d in dirs:
+        files += glob.glob(os.path.join(d, "cookies*.txt"))
+    files = [f for f in files if os.path.isfile(f)]
+    files.sort(key=os.path.getmtime, reverse=True)
     return files[0] if files else None
 
 
